@@ -1,1 +1,6 @@
+# lexer.kopi - very basic lexical analysis
 
+def tokenize(source):
+    # split by whitespace for simplicity
+    return source.replace("
+", " ").split()

@@ -1,1 +1,12 @@
+# runtime.kopi - executes simplistic AST
 
+def run(ast):
+    # Only support 'print' statements like: print("Hello, world!")
+    i = 0
+    while i < len(ast):
+        if ast[i] == "print":
+            content = " ".join(ast[i+1:])
+            content = content.strip("\"")
+            print(content)
+            break
+        i += 1

@@ -1,7 +1,3 @@
-## 5. GitHub Codespaces Dev Container
-
-### `.devcontainer/devcontainer.json`
-```json
 {
     "name": "Kopi Codespace",
     "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11",

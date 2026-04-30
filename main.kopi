@@ -1,1 +1,22 @@
+# main.kopi - entry point for the minimal Kopi interpreter
 
+from lexer import tokenize
+from parser import parse
+from runtime import run
+
+def main():
+    import sys
+    if len(sys.argv) != 2:
+        print("Usage: python3 main.kopi <source_file>")
+        return
+
+    source_file = sys.argv[1]
+    with open(source_file, "r") as f:
+        code = f.read()
+
+    tokens = tokenize(code)
+    ast = parse(tokens)
+    run(ast)
+
+if __name__ == "__main__":
+    main()

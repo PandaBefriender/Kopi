@@ -1,1 +1,5 @@
+# parser.kopi - very simple parser that creates an AST (list of tokens)
 
+def parse(tokens):
+    # Each token is a statement for this minimal interpreter
+    return tokens

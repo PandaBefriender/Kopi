@@ -155,8 +155,43 @@ print(numbers)
 - `range(a, b)` — list of numbers from `a` to `b-1`
 - `range(a, b, step)` — list by step
 - `append(list, value)` — add a value to a list
+- `pop(list)` — remove and return the last item
+- `pop(list, index)` — remove and return a specific item
+- `insert(list, index, value)` — insert a value into a list
+- `remove(list, value)` — remove a value from a list
+- `keys(dict)` — list all dictionary keys
+- `values(dict)` — list all dictionary values
+- `join(separator, list)` — join list items into a string
+- `split(text, sep?)` — split a string into a list
+- `replace(text, old, new)` — replace text in a string
+- `upper(text)` — convert text to uppercase
+- `lower(text)` — convert text to lowercase
+- `type(value)` — show the type name
+- `sum(list)` — add all numbers in a list
+- `min(list)` — smallest value in a list
+- `max(list)` — largest value in a list
+- `sorted(list)` — return a sorted list
 - `int(value)` — convert a string to a number
 - `str(value)` — convert a value to text
+- `any(list)` — true if any item is truthy
+- `all(list)` — true if every item is truthy
+- `abs(number)` — absolute value
+- `copy(value)` — shallow copy of a list or dict
+- `startswith(text, prefix)` — check string prefix
+- `endswith(text, suffix)` — check string suffix
+- `round(number)` or `round(number, digits)` — round a number
+
+### Advanced features
+
+Kopi also supports:
+
+- `null` / `none` for missing values
+- `//` single-line comments and `/* ... */` block comments
+- compound assignment: `+=`, `-=`, `*=`, `/=` 
+- membership checks with `in`
+- dictionary literals and property access: `data["value"]` and `data.value`
+- `for (item in list)` loops for easy iteration
+- `else if` chains for clearer conditional logic
 
 ### Conditionals
 
@@ -180,9 +215,21 @@ Add comments with `#`:
 let message = "Hello"
 ```
 
-## Syntax highlighting in VS Code
+## VS Code support
 
-Kopi files use `.kopi` as the extension. A basic VS Code workspace setting is included so VS Code can treat `.kopi` files like JavaScript and color-code them for easier reading.
+This repo includes local VS Code language support in `.vscode-ext/kopi-language-support`.
+
+To package and install the extension locally:
+
+```bash
+./scripts/package-extension.sh
+code --install-extension kopi-language-support-1.0.0.vsix
+```
+
+You can also keep the extension recommendation in your workspace so collaborators see it automatically:
+
+- `.vscode/settings.json` maps `.kopi` files to the Kopi language
+- `.vscode/extensions.json` recommends the Kopi extension
 
 ## Example lesson: `examples/basics.kopi`
 

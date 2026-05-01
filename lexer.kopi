@@ -16,6 +16,18 @@ def tokenize(source):
                 i += 1
             continue
 
+        if ch == '/' and i + 1 < len(source) and source[i + 1] == '/':
+            while i < len(source) and source[i] != '\n':
+                i += 1
+            continue
+
+        if ch == '/' and i + 1 < len(source) and source[i + 1] == '*':
+            i += 2
+            while i < len(source) - 1 and not (source[i] == '*' and source[i + 1] == '/'):
+                i += 1
+            i += 2
+            continue
+
         if ch == '"':
             start = i
             i += 1
@@ -30,18 +42,28 @@ def tokenize(source):
             tokens.append(source[start:i])
             continue
 
+        if ch in ('+', '-', '*', '/') and i + 1 < len(source) and source[i + 1] == '=':
+            tokens.append(ch + '=')
+            i += 2
+            continue
+
         if ch in ('=', '!', '<', '>') and i + 1 < len(source) and source[i + 1] == '=':
             tokens.append(ch + '=')
             i += 2
             continue
 
-        if ch in '()+-*/=;{},<>![]':
+        if ch in ('&', '|') and i + 1 < len(source) and source[i + 1] == ch:
+            tokens.append(ch + ch)
+            i += 2
+            continue
+
+        if ch in '()+-*/%=;{},<>![]:.':
             tokens.append(ch)
             i += 1
             continue
 
         start = i
-        while i < len(source) and not source[i].isspace() and source[i] not in '()+-*/=;{},<>![]"#':
+        while i < len(source) and not source[i].isspace() and source[i] not in '()+-*/%=;{},<>![]:."#':
             i += 1
         tokens.append(source[start:i])
 

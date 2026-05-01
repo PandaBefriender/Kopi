@@ -3,6 +3,7 @@
 PRECEDENCE = {
     "or": 1,
     "and": 2,
+    "in": 2,
     "==": 3,
     "!=": 3,
     "<": 3,
@@ -13,6 +14,7 @@ PRECEDENCE = {
     "-": 4,
     "*": 5,
     "/": 5,
+    "%": 5,
 }
 
 
@@ -39,6 +41,17 @@ def parse_statement(tokens, i):
             i += 1
         return ("let", name, expr), i
 
+    if token == "import":
+        module_name = tokens[i + 1]
+        alias = module_name
+        i += 2
+        if i < len(tokens) and tokens[i] == "as":
+            alias = tokens[i + 1]
+            i += 2
+        if i < len(tokens) and tokens[i] == ";":
+            i += 1
+        return ("import", module_name, alias), i
+
     if token == "def":
         name = tokens[i + 1]
         if tokens[i + 2] != "(":
@@ -62,7 +75,10 @@ def parse_statement(tokens, i):
         then_block, i = parse_block(tokens, i + 1)
         else_block = None
         if i < len(tokens) and tokens[i] == "else":
-            else_block, i = parse_block(tokens, i + 1)
+            if i + 1 < len(tokens) and tokens[i + 1] == "if":
+                else_block, i = parse_statement(tokens, i + 1)
+            else:
+                else_block, i = parse_block(tokens, i + 1)
         return ("if", condition, then_block, else_block), i
 
     if token == "while":
@@ -75,8 +91,26 @@ def parse_statement(tokens, i):
         return ("while", condition, body), i
 
     if token == "for":
+        if i + 2 < len(tokens) and tokens[i + 2] == "in":
+            iterator = tokens[i + 1]
+            iterable, i = parse_expression(tokens, i + 3)
+            body, i = parse_block(tokens, i)
+            return ("for_in", iterator, iterable, body), i
+
         if tokens[i + 1] != "(":
             raise SyntaxError("Expected '(' after for")
+
+        i += 2
+        if tokens[i] == "let":
+            i += 1
+        iterator = tokens[i]
+        if tokens[i + 1] != "in":
+            raise SyntaxError("Expected 'in' after iterator variable")
+        iterable, i = parse_expression(tokens, i + 2)
+        if tokens[i] != ")":
+            raise SyntaxError("Expected ')' after for iterator")
+        body, i = parse_block(tokens, i + 1)
+        return ("for_in", iterator, iterable, body), i
         i += 2
         init = None
         if tokens[i] != ";":
@@ -117,12 +151,13 @@ def parse_statement(tokens, i):
             i += 1
         return ("return", expr), i
 
-    if i + 1 < len(tokens) and tokens[i + 1] == "=":
+    if i + 1 < len(tokens) and tokens[i + 1] in ("=", "+=", "-=", "*=", "/="):
         name = token
+        op = tokens[i + 1]
         expr, i = parse_expression(tokens, i + 2)
         if i < len(tokens) and tokens[i] == ";":
             i += 1
-        return ("assign", name, expr), i
+        return ("assign", name, op, expr), i
 
     expr, i = parse_expression(tokens, i)
     if i < len(tokens) and tokens[i] == ";":
@@ -157,7 +192,7 @@ def parse_expression(tokens, i, min_prec=1):
 
 def parse_unary(tokens, i):
     token = tokens[i]
-    if token == "-" or token == "!":
+    if token == "-" or token == "!" or token == "not":
         expr, i = parse_unary(tokens, i + 1)
         return ("unary", token, expr), i
     return parse_primary(tokens, i)
@@ -171,6 +206,30 @@ def parse_primary(tokens, i):
         if tokens[i] != ")":
             raise SyntaxError("Expected ')' in expression")
         return expr, i + 1
+
+    if token == "{":
+        items = []
+        i += 1
+        if tokens[i] != "}":
+            while True:
+                key_token = tokens[i]
+                if key_token.startswith('"') and key_token.endswith('"'):
+                    key = key_token[1:-1]
+                elif key_token.isidentifier():
+                    key = key_token
+                else:
+                    raise SyntaxError("Expected string or identifier as dict key")
+                i += 1
+                if tokens[i] != ":":
+                    raise SyntaxError("Expected ':' after dict key")
+                value, i = parse_expression(tokens, i + 1)
+                items.append((key, value))
+                if tokens[i] == "}":
+                    break
+                if tokens[i] != ",":
+                    raise SyntaxError("Expected ',' between dict entries")
+                i += 1
+        return ("dict", items), i + 1
 
     if token == "[":
         items = []
@@ -198,6 +257,9 @@ def parse_primary(tokens, i):
     if token == "false":
         return ("bool", False), i + 1
 
+    if token == "null" or token == "none":
+        return ("none", None), i + 1
+
     if token.isidentifier():
         expr = ("var", token)
         i += 1
@@ -223,6 +285,12 @@ def parse_primary(tokens, i):
                     raise SyntaxError("Expected ']' after index")
                 i += 1
                 expr = ("index", expr, index_expr)
+                continue
+            if tokens[i] == ".":
+                if i + 1 >= len(tokens) or not tokens[i + 1].isidentifier():
+                    raise SyntaxError("Expected property name after '.'")
+                expr = ("attr", expr, tokens[i + 1])
+                i += 2
                 continue
             break
         return expr, i

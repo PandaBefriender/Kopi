@@ -1,4 +1,10 @@
-# runtime.kopi - executes simplistic AST
+# runtime.kopi - executes the Kopi AST
+
+import os
+import sys
+
+from lexer import tokenize
+from parser import parse
 
 class ReturnValue(Exception):
     def __init__(self, value):
@@ -16,28 +22,83 @@ class ContinueLoop(Exception):
 def run(ast):
     global_vars = {}
     functions = {}
+    module_cache = {}
+
+    def find_module_path(name):
+        candidate = name + ".kopi"
+        paths = [os.getcwd()] + sys.path
+        for entry in paths:
+            location = os.path.join(entry or ".", candidate)
+            if os.path.isfile(location):
+                return location
+        raise FileNotFoundError(f"Kopi module '{name}' not found")
+
+    def load_module(name):
+        if name in module_cache:
+            return module_cache[name]
+
+        module_path = find_module_path(name)
+        with open(module_path, "r") as f:
+            source = f.read()
+
+        module_tokens = tokenize(source)
+        module_ast = parse(module_tokens)
+        module_vars = {}
+        module_functions = {}
+        module_object = {"__name__": name}
+        module_cache[name] = module_object
+
+        for statement in module_ast:
+            execute(statement, module_vars, module_vars, module_functions, module_cache, load_module)
+
+        for func_name, (params, body) in module_functions.items():
+            module_object[func_name] = ("kopi_fn", params, body, module_vars, module_functions)
+
+        module_object.update(module_vars)
+        return module_object
 
     for statement in ast:
-        execute(statement, global_vars, global_vars, functions)
+        execute(statement, global_vars, global_vars, functions, module_cache, load_module)
 
 
-def execute(statement, local_vars, global_vars, functions):
+def execute(statement, local_vars, global_vars, functions, module_cache, load_module):
     kind = statement[0]
 
     if kind == "let":
         _, name, expr = statement
-        local_vars[name] = evaluate(expr, local_vars, global_vars, functions)
+        local_vars[name] = evaluate(expr, local_vars, global_vars, functions, module_cache, load_module)
         return None
 
     if kind == "assign":
-        _, name, expr = statement
-        value = evaluate(expr, local_vars, global_vars, functions)
-        if name in local_vars:
-            local_vars[name] = value
-        elif name in global_vars:
-            global_vars[name] = value
+        _, name, op, expr = statement
+        value = evaluate(expr, local_vars, global_vars, functions, module_cache, load_module)
+        if op == "=":
+            result = value
         else:
-            local_vars[name] = value
+            current = local_vars.get(name, global_vars.get(name, None))
+            if current is None:
+                raise NameError(f"Undefined variable '{name}'")
+            if op == "+=":
+                result = current + value
+            elif op == "-=":
+                result = current - value
+            elif op == "*=":
+                result = current * value
+            elif op == "/=":
+                result = current / value
+            else:
+                raise RuntimeError(f"Unknown assignment operator '{op}'")
+        if name in local_vars:
+            local_vars[name] = result
+        elif name in global_vars:
+            global_vars[name] = result
+        else:
+            local_vars[name] = result
+        return None
+
+    if kind == "import":
+        _, module_name, alias = statement
+        local_vars[alias] = load_module(module_name)
         return None
 
     if kind == "def":
@@ -47,17 +108,20 @@ def execute(statement, local_vars, global_vars, functions):
 
     if kind == "if":
         _, condition, then_block, else_block = statement
-        if is_truthy(evaluate(condition, local_vars, global_vars, functions)):
-            execute_block(then_block, local_vars, global_vars, functions)
+        if is_truthy(evaluate(condition, local_vars, global_vars, functions, module_cache, load_module)):
+            execute_block(then_block, local_vars, global_vars, functions, module_cache, load_module)
         elif else_block is not None:
-            execute_block(else_block, local_vars, global_vars, functions)
+            if else_block[0] == "block":
+                execute_block(else_block, local_vars, global_vars, functions, module_cache, load_module)
+            else:
+                execute(else_block, local_vars, global_vars, functions, module_cache, load_module)
         return None
 
     if kind == "while":
         _, condition, body = statement
-        while is_truthy(evaluate(condition, local_vars, global_vars, functions)):
+        while is_truthy(evaluate(condition, local_vars, global_vars, functions, module_cache, load_module)):
             try:
-                execute_block(body, local_vars, global_vars, functions)
+                execute_block(body, local_vars, global_vars, functions, module_cache, load_module)
             except ContinueLoop:
                 pass
             except BreakLoop:
@@ -67,16 +131,29 @@ def execute(statement, local_vars, global_vars, functions):
     if kind == "for":
         _, init, condition, step, body = statement
         if init is not None:
-            execute(init, local_vars, global_vars, functions)
-        while is_truthy(evaluate(condition, local_vars, global_vars, functions)):
+            execute(init, local_vars, global_vars, functions, module_cache, load_module)
+        while is_truthy(evaluate(condition, local_vars, global_vars, functions, module_cache, load_module)):
             try:
-                execute_block(body, local_vars, global_vars, functions)
+                execute_block(body, local_vars, global_vars, functions, module_cache, load_module)
             except ContinueLoop:
                 pass
             except BreakLoop:
                 break
             if step is not None:
-                execute(step, local_vars, global_vars, functions)
+                execute(step, local_vars, global_vars, functions, module_cache, load_module)
+        return None
+
+    if kind == "for_in":
+        _, iterator, iterable, body = statement
+        collection = evaluate(iterable, local_vars, global_vars, functions, module_cache, load_module)
+        for item in collection:
+            try:
+                local_vars[iterator] = item
+                execute_block(body, local_vars, global_vars, functions, module_cache, load_module)
+            except ContinueLoop:
+                continue
+            except BreakLoop:
+                break
         return None
 
     if kind == "break":
@@ -87,25 +164,25 @@ def execute(statement, local_vars, global_vars, functions):
 
     if kind == "return":
         _, expr = statement
-        raise ReturnValue(evaluate(expr, local_vars, global_vars, functions))
+        raise ReturnValue(evaluate(expr, local_vars, global_vars, functions, module_cache, load_module))
 
     if kind == "expr":
-        evaluate(statement[1], local_vars, global_vars, functions)
+        evaluate(statement[1], local_vars, global_vars, functions, module_cache, load_module)
         return None
 
     if kind == "block":
-        execute_block(statement, local_vars, global_vars, functions)
+        execute_block(statement, local_vars, global_vars, functions, module_cache, load_module)
         return None
 
     raise RuntimeError(f"Unknown statement type '{kind}'")
 
 
-def execute_block(block, local_vars, global_vars, functions):
+def execute_block(block, local_vars, global_vars, functions, module_cache, load_module):
     for statement in block[1]:
-        execute(statement, local_vars, global_vars, functions)
+        execute(statement, local_vars, global_vars, functions, module_cache, load_module)
 
 
-def evaluate(node, local_vars, global_vars, functions):
+def evaluate(node, local_vars, global_vars, functions, module_cache, load_module):
     kind = node[0]
 
     if kind == "number":
@@ -117,8 +194,14 @@ def evaluate(node, local_vars, global_vars, functions):
     if kind == "bool":
         return node[1]
 
+    if kind == "none":
+        return None
+
     if kind == "array":
-        return [evaluate(item, local_vars, global_vars, functions) for item in node[1]]
+        return [evaluate(item, local_vars, global_vars, functions, module_cache, load_module) for item in node[1]]
+
+    if kind == "dict":
+        return {key: evaluate(value, local_vars, global_vars, functions, module_cache, load_module) for key, value in node[1]}
 
     if kind == "var":
         name = node[1]
@@ -128,29 +211,46 @@ def evaluate(node, local_vars, global_vars, functions):
             return global_vars[name]
         raise NameError(f"Undefined variable '{name}'")
 
+    if kind == "attr":
+        source = evaluate(node[1], local_vars, global_vars, functions, module_cache, load_module)
+        name = node[2]
+        if isinstance(source, dict) and name in source:
+            return source[name]
+        raise RuntimeError(f"Cannot access property '{name}'")
+
     if kind == "unary":
         op = node[1]
-        value = evaluate(node[2], local_vars, global_vars, functions)
+        value = evaluate(node[2], local_vars, global_vars, functions, module_cache, load_module)
         if op == "-":
             return -value
-        if op == "!":
+        if op == "!" or op == "not":
             return not is_truthy(value)
 
     if kind == "binop":
         op = node[1]
-        left = evaluate(node[2], local_vars, global_vars, functions)
-        right = evaluate(node[3], local_vars, global_vars, functions)
+        left = evaluate(node[2], local_vars, global_vars, functions, module_cache, load_module)
+        right = evaluate(node[3], local_vars, global_vars, functions, module_cache, load_module)
 
         if op == "+":
             if isinstance(left, str) or isinstance(right, str):
                 return str(left) + str(right)
+            if isinstance(left, list) and isinstance(right, list):
+                return left + right
             return left + right
         if op == "-":
             return left - right
         if op == "*":
+            if isinstance(left, list) and isinstance(right, int):
+                return left * right
+            if isinstance(right, list) and isinstance(left, int):
+                return right * left
             return left * right
+        if op == "%":
+            return left % right
         if op == "/":
             return left / right
+        if op == "in":
+            return left in right
         if op == "==":
             return left == right
         if op == "!=":
@@ -163,22 +263,45 @@ def evaluate(node, local_vars, global_vars, functions):
             return left > right
         if op == ">=":
             return left >= right
-        if op == "and":
+        if op == "and" or op == "&&":
             return is_truthy(left) and is_truthy(right)
-        if op == "or":
+        if op == "or" or op == "||":
             return is_truthy(left) or is_truthy(right)
 
     if kind == "index":
-        source = evaluate(node[1], local_vars, global_vars, functions)
-        index = evaluate(node[2], local_vars, global_vars, functions)
+        source = evaluate(node[1], local_vars, global_vars, functions, module_cache, load_module)
+        index = evaluate(node[2], local_vars, global_vars, functions, module_cache, load_module)
         return source[index]
 
     if kind == "call":
         fn = node[1]
-        args = [evaluate(arg, local_vars, global_vars, functions) for arg in node[2]]
-        if fn[0] != "var":
+        args = [evaluate(arg, local_vars, global_vars, functions, module_cache, load_module) for arg in node[2]]
+
+        if fn[0] == "var":
+            name = fn[1]
+            if name in functions:
+                params, body = functions[name]
+                call_vars = {param: arg for param, arg in zip(params, args)}
+                try:
+                    execute_block(body, call_vars, global_vars, functions, module_cache, load_module)
+                except ReturnValue as return_value:
+                    return return_value.value
+                return None
+        else:
+            fn_value = evaluate(fn, local_vars, global_vars, functions, module_cache, load_module)
+            if isinstance(fn_value, tuple) and fn_value and fn_value[0] == "kopi_fn":
+                _, params, body, fn_globals, fn_functions = fn_value
+                call_vars = {param: arg for param, arg in zip(params, args)}
+                try:
+                    execute_block(body, call_vars, fn_globals, fn_functions, module_cache, load_module)
+                except ReturnValue as return_value:
+                    return return_value.value
+                return None
             raise RuntimeError("Only simple function names are supported")
-        name = fn[1]
+
+        if name == "print":
+            print(*args)
+            return None
 
         if name == "print":
             print(*args)
@@ -210,6 +333,87 @@ def evaluate(node, local_vars, global_vars, functions):
             args[0].append(args[1])
             return None
 
+        if name == "pop":
+            if len(args) == 1:
+                return args[0].pop()
+            if len(args) == 2:
+                return args[0].pop(args[1])
+            raise RuntimeError("pop() takes 1 or 2 arguments")
+
+        if name == "insert":
+            if len(args) != 3:
+                raise RuntimeError("insert() takes exactly three arguments")
+            args[0].insert(args[1], args[2])
+            return None
+
+        if name == "remove":
+            if len(args) != 2:
+                raise RuntimeError("remove() takes exactly two arguments")
+            args[0].remove(args[1])
+            return None
+
+        if name == "keys":
+            if len(args) != 1:
+                raise RuntimeError("keys() takes exactly one argument")
+            return list(args[0].keys())
+
+        if name == "values":
+            if len(args) != 1:
+                raise RuntimeError("values() takes exactly one argument")
+            return list(args[0].values())
+
+        if name == "join":
+            if len(args) != 2:
+                raise RuntimeError("join() takes exactly two arguments")
+            return str(args[0]).join(str(item) for item in args[1])
+
+        if name == "split":
+            if len(args) not in (1, 2):
+                raise RuntimeError("split() takes one or two arguments")
+            text = str(args[0])
+            sep = None if len(args) == 1 else str(args[1])
+            return text.split(sep)
+
+        if name == "replace":
+            if len(args) != 3:
+                raise RuntimeError("replace() takes exactly three arguments")
+            return str(args[0]).replace(str(args[1]), str(args[2]))
+
+        if name == "upper":
+            if len(args) != 1:
+                raise RuntimeError("upper() takes exactly one argument")
+            return str(args[0]).upper()
+
+        if name == "lower":
+            if len(args) != 1:
+                raise RuntimeError("lower() takes exactly one argument")
+            return str(args[0]).lower()
+
+        if name == "type":
+            if len(args) != 1:
+                raise RuntimeError("type() takes exactly one argument")
+            return _type_name(args[0])
+
+        if name == "sum":
+            if len(args) != 1:
+                raise RuntimeError("sum() takes exactly one argument")
+            return builtins_sum(args[0])
+
+        if name == "min":
+            if len(args) != 1:
+                raise RuntimeError("min() takes exactly one argument")
+            return builtins_min(args[0])
+
+        if name == "max":
+            if len(args) != 1:
+                raise RuntimeError("max() takes exactly one argument")
+            return builtins_max(args[0])
+
+        if name == "sorted":
+            if len(args) != 1:
+                raise RuntimeError("sorted() takes exactly one argument")
+            return builtins_sorted(args[0])
+
         if name == "int":
             if len(args) != 1:
                 raise RuntimeError("int() takes exactly one argument")
@@ -220,18 +424,90 @@ def evaluate(node, local_vars, global_vars, functions):
                 raise RuntimeError("str() takes exactly one argument")
             return str(args[0])
 
+        if name == "any":
+            if len(args) != 1:
+                raise RuntimeError("any() takes exactly one argument")
+            return any(is_truthy(item) for item in args[0])
+
+        if name == "all":
+            if len(args) != 1:
+                raise RuntimeError("all() takes exactly one argument")
+            return all(is_truthy(item) for item in args[0])
+
+        if name == "abs":
+            if len(args) != 1:
+                raise RuntimeError("abs() takes exactly one argument")
+            return abs(args[0])
+
+        if name == "copy":
+            if len(args) != 1:
+                raise RuntimeError("copy() takes exactly one argument")
+            value = args[0]
+            if isinstance(value, dict):
+                return value.copy()
+            if isinstance(value, list):
+                return value[:]
+            return value
+
+        if name == "startswith":
+            if len(args) != 2:
+                raise RuntimeError("startswith() takes exactly two arguments")
+            return str(args[0]).startswith(str(args[1]))
+
+        if name == "endswith":
+            if len(args) != 2:
+                raise RuntimeError("endswith() takes exactly two arguments")
+            return str(args[0]).endswith(str(args[1]))
+
+        if name == "round":
+            if len(args) not in (1, 2):
+                raise RuntimeError("round() takes one or two arguments")
+            return round(args[0]) if len(args) == 1 else round(args[0], args[1])
+
         if name not in functions:
             raise NameError(f"Undefined function '{name}'")
 
         params, body = functions[name]
         call_vars = {param: arg for param, arg in zip(params, args)}
         try:
-            execute_block(body, call_vars, global_vars, functions)
+            execute_block(body, call_vars, global_vars, functions, module_cache, load_module)
         except ReturnValue as return_value:
             return return_value.value
         return None
 
     raise RuntimeError(f"Unknown expression type '{kind}'")
+
+
+def _type_name(value):
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, int) or isinstance(value, float):
+        return "number"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, dict):
+        return "dict"
+    if value is None:
+        return "none"
+    return "unknown"
+
+
+def builtins_sum(value):
+    return sum(value)
+
+
+def builtins_min(value):
+    return min(value)
+
+
+def builtins_max(value):
+    return max(value)
+
+
+def builtins_sorted(value):
+    return sorted(value)
 
 
 def is_truthy(value):

@@ -1,5 +1,3 @@
-# Kopi fluency lesson - interactive version
-# Try typing answers when prompted!
 
 print("Welcome to the Kopi fluency lesson!")
 print("Let's learn Kopi together...")

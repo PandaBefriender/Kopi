@@ -14,7 +14,27 @@ Kopi is a tiny, simple programming language built for learning and experimenting
 Use the interpreter with a `.kopi` file:
 
 ```bash
+./kopi run examples/basics.kopi
+```
+
+Or use Python directly:
+
+```bash
 python3 main.kopi examples/basics.kopi
+```
+
+### Making `kopi` available globally
+
+To use `kopi run` from anywhere, add the Kopi directory to your PATH:
+
+```bash
+export PATH="$PATH:/path/to/Kopi"
+```
+
+Then you can run:
+
+```bash
+kopi run path/to/file.kopi
 ```
 
 ## What you can write in Kopi

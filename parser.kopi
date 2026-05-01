@@ -1,5 +1,230 @@
-# parser.kopi - very simple parser that creates an AST (list of tokens)
+# parser.kopi - simple parser that creates an AST (abstract syntax tree)
+
+PRECEDENCE = {
+    "or": 1,
+    "and": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    "<=": 3,
+    ">": 3,
+    ">=": 3,
+    "+": 4,
+    "-": 4,
+    "*": 5,
+    "/": 5,
+}
+
 
 def parse(tokens):
-    # Each token is a statement for this minimal interpreter
-    return tokens
+    i = 0
+    ast = []
+
+    while i < len(tokens):
+        statement, i = parse_statement(tokens, i)
+        ast.append(statement)
+
+    return ast
+
+
+def parse_statement(tokens, i):
+    token = tokens[i]
+
+    if token == "let":
+        name = tokens[i + 1]
+        if tokens[i + 2] != "=":
+            raise SyntaxError("Expected '=' after variable name")
+        expr, i = parse_expression(tokens, i + 3)
+        if i < len(tokens) and tokens[i] == ";":
+            i += 1
+        return ("let", name, expr), i
+
+    if token == "def":
+        name = tokens[i + 1]
+        if tokens[i + 2] != "(":
+            raise SyntaxError("Expected '(' after function name")
+        params = []
+        i = i + 3
+        while tokens[i] != ")":
+            params.append(tokens[i])
+            i += 1
+            if tokens[i] == ",":
+                i += 1
+        body, i = parse_block(tokens, i + 1)
+        return ("def", name, params, body), i
+
+    if token == "if":
+        if tokens[i + 1] != "(":
+            raise SyntaxError("Expected '(' after if")
+        condition, i = parse_expression(tokens, i + 2)
+        if tokens[i] != ")":
+            raise SyntaxError("Expected ')' after if condition")
+        then_block, i = parse_block(tokens, i + 1)
+        else_block = None
+        if i < len(tokens) and tokens[i] == "else":
+            else_block, i = parse_block(tokens, i + 1)
+        return ("if", condition, then_block, else_block), i
+
+    if token == "while":
+        if tokens[i + 1] != "(":
+            raise SyntaxError("Expected '(' after while")
+        condition, i = parse_expression(tokens, i + 2)
+        if tokens[i] != ")":
+            raise SyntaxError("Expected ')' after while condition")
+        body, i = parse_block(tokens, i + 1)
+        return ("while", condition, body), i
+
+    if token == "for":
+        if tokens[i + 1] != "(":
+            raise SyntaxError("Expected '(' after for")
+        i += 2
+        init = None
+        if tokens[i] != ";":
+            init, i = parse_statement(tokens, i)
+        else:
+            i += 1
+
+        condition = ("bool", True)
+        if tokens[i] != ";":
+            condition, i = parse_expression(tokens, i)
+        if tokens[i] != ";":
+            raise SyntaxError("Expected ';' after for condition")
+        i += 1
+
+        step = None
+        if tokens[i] != ")":
+            step, i = parse_statement(tokens, i)
+        if tokens[i] != ")":
+            raise SyntaxError("Expected ')' after for header")
+        body, i = parse_block(tokens, i + 1)
+        return ("for", init, condition, step, body), i
+
+    if token == "break":
+        i += 1
+        if i < len(tokens) and tokens[i] == ";":
+            i += 1
+        return ("break",), i
+
+    if token == "continue":
+        i += 1
+        if i < len(tokens) and tokens[i] == ";":
+            i += 1
+        return ("continue",), i
+
+    if token == "return":
+        expr, i = parse_expression(tokens, i + 1)
+        if i < len(tokens) and tokens[i] == ";":
+            i += 1
+        return ("return", expr), i
+
+    if i + 1 < len(tokens) and tokens[i + 1] == "=":
+        name = token
+        expr, i = parse_expression(tokens, i + 2)
+        if i < len(tokens) and tokens[i] == ";":
+            i += 1
+        return ("assign", name, expr), i
+
+    expr, i = parse_expression(tokens, i)
+    if i < len(tokens) and tokens[i] == ";":
+        i += 1
+    return ("expr", expr), i
+
+
+def parse_block(tokens, i):
+    if tokens[i] != "{":
+        raise SyntaxError("Expected '{' to start block")
+    i += 1
+    statements = []
+    while i < len(tokens) and tokens[i] != "}":
+        statement, i = parse_statement(tokens, i)
+        statements.append(statement)
+    if i >= len(tokens) or tokens[i] != "}":
+        raise SyntaxError("Expected '}' to end block")
+    return ("block", statements), i + 1
+
+
+def parse_expression(tokens, i, min_prec=1):
+    lhs, i = parse_unary(tokens, i)
+
+    while i < len(tokens) and tokens[i] in PRECEDENCE and PRECEDENCE[tokens[i]] >= min_prec:
+        op = tokens[i]
+        prec = PRECEDENCE[op]
+        rhs, i = parse_expression(tokens, i + 1, prec + 1)
+        lhs = ("binop", op, lhs, rhs)
+
+    return lhs, i
+
+
+def parse_unary(tokens, i):
+    token = tokens[i]
+    if token == "-" or token == "!":
+        expr, i = parse_unary(tokens, i + 1)
+        return ("unary", token, expr), i
+    return parse_primary(tokens, i)
+
+
+def parse_primary(tokens, i):
+    token = tokens[i]
+
+    if token == "(":
+        expr, i = parse_expression(tokens, i + 1)
+        if tokens[i] != ")":
+            raise SyntaxError("Expected ')' in expression")
+        return expr, i + 1
+
+    if token == "[":
+        items = []
+        i += 1
+        if tokens[i] != "]":
+            while True:
+                item, i = parse_expression(tokens, i)
+                items.append(item)
+                if tokens[i] == "]":
+                    break
+                if tokens[i] != ",":
+                    raise SyntaxError("Expected ',' in array literal")
+                i += 1
+        return ("array", items), i + 1
+
+    if token.startswith('"') and token.endswith('"'):
+        return ("string", token[1:-1]), i + 1
+
+    if token.isdigit() or (token.startswith("-") and token[1:].isdigit()):
+        return ("number", int(token)), i + 1
+
+    if token == "true":
+        return ("bool", True), i + 1
+
+    if token == "false":
+        return ("bool", False), i + 1
+
+    if token.isidentifier():
+        expr = ("var", token)
+        i += 1
+        while i < len(tokens):
+            if tokens[i] == "(":
+                args = []
+                i += 1
+                if tokens[i] != ")":
+                    while True:
+                        arg, i = parse_expression(tokens, i)
+                        args.append(arg)
+                        if tokens[i] == ")":
+                            break
+                        if tokens[i] != ",":
+                            raise SyntaxError("Expected ',' between function arguments")
+                        i += 1
+                i += 1
+                expr = ("call", expr, args)
+                continue
+            if tokens[i] == "[":
+                index_expr, i = parse_expression(tokens, i + 1)
+                if tokens[i] != "]":
+                    raise SyntaxError("Expected ']' after index")
+                i += 1
+                expr = ("index", expr, index_expr)
+                continue
+            break
+        return expr, i
+
+    raise SyntaxError(f"Unexpected token: {token}")

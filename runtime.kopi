@@ -1,12 +1,238 @@
 # runtime.kopi - executes simplistic AST
 
+class ReturnValue(Exception):
+    def __init__(self, value):
+        self.value = value
+
+
+class BreakLoop(Exception):
+    pass
+
+
+class ContinueLoop(Exception):
+    pass
+
+
 def run(ast):
-    # Only support 'print' statements like: print("Hello, world!")
-    i = 0
-    while i < len(ast):
-        if ast[i] == "print":
-            content = " ".join(ast[i+1:])
-            content = content.strip("\"")
-            print(content)
-            break
-        i += 1
+    global_vars = {}
+    functions = {}
+
+    for statement in ast:
+        execute(statement, global_vars, global_vars, functions)
+
+
+def execute(statement, local_vars, global_vars, functions):
+    kind = statement[0]
+
+    if kind == "let":
+        _, name, expr = statement
+        local_vars[name] = evaluate(expr, local_vars, global_vars, functions)
+        return None
+
+    if kind == "assign":
+        _, name, expr = statement
+        value = evaluate(expr, local_vars, global_vars, functions)
+        if name in local_vars:
+            local_vars[name] = value
+        elif name in global_vars:
+            global_vars[name] = value
+        else:
+            local_vars[name] = value
+        return None
+
+    if kind == "def":
+        _, name, params, body = statement
+        functions[name] = (params, body)
+        return None
+
+    if kind == "if":
+        _, condition, then_block, else_block = statement
+        if is_truthy(evaluate(condition, local_vars, global_vars, functions)):
+            execute_block(then_block, local_vars, global_vars, functions)
+        elif else_block is not None:
+            execute_block(else_block, local_vars, global_vars, functions)
+        return None
+
+    if kind == "while":
+        _, condition, body = statement
+        while is_truthy(evaluate(condition, local_vars, global_vars, functions)):
+            try:
+                execute_block(body, local_vars, global_vars, functions)
+            except ContinueLoop:
+                pass
+            except BreakLoop:
+                break
+        return None
+
+    if kind == "for":
+        _, init, condition, step, body = statement
+        if init is not None:
+            execute(init, local_vars, global_vars, functions)
+        while is_truthy(evaluate(condition, local_vars, global_vars, functions)):
+            try:
+                execute_block(body, local_vars, global_vars, functions)
+            except ContinueLoop:
+                pass
+            except BreakLoop:
+                break
+            if step is not None:
+                execute(step, local_vars, global_vars, functions)
+        return None
+
+    if kind == "break":
+        raise BreakLoop()
+
+    if kind == "continue":
+        raise ContinueLoop()
+
+    if kind == "return":
+        _, expr = statement
+        raise ReturnValue(evaluate(expr, local_vars, global_vars, functions))
+
+    if kind == "expr":
+        evaluate(statement[1], local_vars, global_vars, functions)
+        return None
+
+    if kind == "block":
+        execute_block(statement, local_vars, global_vars, functions)
+        return None
+
+    raise RuntimeError(f"Unknown statement type '{kind}'")
+
+
+def execute_block(block, local_vars, global_vars, functions):
+    for statement in block[1]:
+        execute(statement, local_vars, global_vars, functions)
+
+
+def evaluate(node, local_vars, global_vars, functions):
+    kind = node[0]
+
+    if kind == "number":
+        return node[1]
+
+    if kind == "string":
+        return node[1]
+
+    if kind == "bool":
+        return node[1]
+
+    if kind == "array":
+        return [evaluate(item, local_vars, global_vars, functions) for item in node[1]]
+
+    if kind == "var":
+        name = node[1]
+        if name in local_vars:
+            return local_vars[name]
+        if name in global_vars:
+            return global_vars[name]
+        raise NameError(f"Undefined variable '{name}'")
+
+    if kind == "unary":
+        op = node[1]
+        value = evaluate(node[2], local_vars, global_vars, functions)
+        if op == "-":
+            return -value
+        if op == "!":
+            return not is_truthy(value)
+
+    if kind == "binop":
+        op = node[1]
+        left = evaluate(node[2], local_vars, global_vars, functions)
+        right = evaluate(node[3], local_vars, global_vars, functions)
+
+        if op == "+":
+            if isinstance(left, str) or isinstance(right, str):
+                return str(left) + str(right)
+            return left + right
+        if op == "-":
+            return left - right
+        if op == "*":
+            return left * right
+        if op == "/":
+            return left / right
+        if op == "==":
+            return left == right
+        if op == "!=":
+            return left != right
+        if op == "<":
+            return left < right
+        if op == "<=":
+            return left <= right
+        if op == ">":
+            return left > right
+        if op == ">=":
+            return left >= right
+        if op == "and":
+            return is_truthy(left) and is_truthy(right)
+        if op == "or":
+            return is_truthy(left) or is_truthy(right)
+
+    if kind == "index":
+        source = evaluate(node[1], local_vars, global_vars, functions)
+        index = evaluate(node[2], local_vars, global_vars, functions)
+        return source[index]
+
+    if kind == "call":
+        fn = node[1]
+        args = [evaluate(arg, local_vars, global_vars, functions) for arg in node[2]]
+        if fn[0] != "var":
+            raise RuntimeError("Only simple function names are supported")
+        name = fn[1]
+
+        if name == "print":
+            print(*args)
+            return None
+
+        if name == "read":
+            if len(args) > 0:
+                prompt = str(args[0])
+                return input(prompt)
+            return input()
+
+        if name == "len":
+            if len(args) != 1:
+                raise RuntimeError("len() takes exactly one argument")
+            return len(args[0])
+
+        if name == "range":
+            if len(args) == 1:
+                return list(range(args[0]))
+            if len(args) == 2:
+                return list(range(args[0], args[1]))
+            if len(args) == 3:
+                return list(range(args[0], args[1], args[2]))
+            raise RuntimeError("range() takes 1 to 3 arguments")
+
+        if name == "append":
+            if len(args) != 2:
+                raise RuntimeError("append() takes exactly two arguments")
+            args[0].append(args[1])
+            return None
+
+        if name == "int":
+            if len(args) != 1:
+                raise RuntimeError("int() takes exactly one argument")
+            return int(args[0])
+
+        if name == "str":
+            if len(args) != 1:
+                raise RuntimeError("str() takes exactly one argument")
+            return str(args[0])
+
+        if name not in functions:
+            raise NameError(f"Undefined function '{name}'")
+
+        params, body = functions[name]
+        call_vars = {param: arg for param, arg in zip(params, args)}
+        try:
+            execute_block(body, call_vars, global_vars, functions)
+        except ReturnValue as return_value:
+            return return_value.value
+        return None
+
+    raise RuntimeError(f"Unknown expression type '{kind}'")
+
+
+def is_truthy(value):
+    return bool(value)

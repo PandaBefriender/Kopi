@@ -1,5 +1,39 @@
 # main.kopi - entry point for the minimal Kopi interpreter
 
+import importlib.abc
+import importlib.util
+import os
+import sys
+
+class KopiLoader(importlib.abc.SourceLoader):
+    def __init__(self, path):
+        self.path = path
+
+    def get_filename(self, fullname):
+        return self.path
+
+    def get_data(self, path):
+        with open(path, "rb") as f:
+            return f.read()
+
+    def path_stats(self, path):
+        stat = os.stat(path)
+        return {"mtime": stat.st_mtime, "size": stat.st_size}
+
+class KopiFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        module_name = fullname.rpartition('.')[-1]
+        filename = module_name + '.kopi'
+        search_paths = path if path is not None else sys.path
+        for entry in search_paths:
+            candidate = os.path.join(entry or '.', filename)
+            if os.path.isfile(candidate):
+                loader = KopiLoader(candidate)
+                return importlib.util.spec_from_file_location(fullname, candidate, loader=loader)
+        return None
+
+sys.meta_path.insert(0, KopiFinder())
+
 from lexer import tokenize
 from parser import parse
 from runtime import run

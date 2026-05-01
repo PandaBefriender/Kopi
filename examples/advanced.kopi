@@ -1,0 +1,28 @@
+# Advanced Kopi example showing lists, loops, and functions
+
+let items = [1, 2, 3]
+append(items, 4)
+print("Items: " + items)
+print("Length: " + len(items))
+print("Second item: " + items[1])
+
+for (let i = 0; i < len(items); i = i + 1) {
+    print("item " + i + " = " + items[i])
+}
+
+let numbers = range(1, 6)
+print("Range: " + numbers)
+
+print("Sum of the list:")
+
+def sumList(list) {
+    let total = 0
+    let i = 0
+    while (i < len(list)) {
+        total = total + list[i]
+        i = i + 1
+    }
+    return total
+}
+
+print(sumList(items))

@@ -2,29 +2,26 @@
   "files.associations": {
     "*.kopi": "kopi"
   },
-  "[kopi]": {
-    "editor.defaultFormatter": null,
-    "editor.formatOnSave": false
-  },
   "editor.tokenColorCustomizations": {
     "textMateRules": [
       {
+        "scope": "keyword.control.kopi",
+        "settings": {
+          "foreground": "#569CD6",
+          "fontStyle": "bold"
+        }
+      },
+      {
         "scope": "comment.line.kopi",
         "settings": {
-          "foreground": "#6A9955"
+          "foreground": "#6A9955",
+          "fontStyle": "italic"
         }
       },
       {
         "scope": "string.quoted.double.kopi",
         "settings": {
           "foreground": "#CE9178"
-        }
-      },
-      {
-        "scope": "keyword.control.kopi",
-        "settings": {
-          "foreground": "#569CD6",
-          "fontStyle": "bold"
         }
       },
       {
@@ -48,4 +45,3 @@
     ]
   }
 }
-

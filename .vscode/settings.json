@@ -1,5 +1,51 @@
 {
   "files.associations": {
-    "*.kopi": "javascript"
+    "*.kopi": "kopi"
+  },
+  "[kopi]": {
+    "editor.defaultFormatter": null,
+    "editor.formatOnSave": false
+  },
+  "editor.tokenColorCustomizations": {
+    "textMateRules": [
+      {
+        "scope": "comment.line.kopi",
+        "settings": {
+          "foreground": "#6A9955"
+        }
+      },
+      {
+        "scope": "string.quoted.double.kopi",
+        "settings": {
+          "foreground": "#CE9178"
+        }
+      },
+      {
+        "scope": "keyword.control.kopi",
+        "settings": {
+          "foreground": "#569CD6",
+          "fontStyle": "bold"
+        }
+      },
+      {
+        "scope": "constant.numeric.kopi",
+        "settings": {
+          "foreground": "#B5CEA8"
+        }
+      },
+      {
+        "scope": "support.function.kopi",
+        "settings": {
+          "foreground": "#DCDCAA"
+        }
+      },
+      {
+        "scope": "keyword.operator.kopi",
+        "settings": {
+          "foreground": "#D4D4D4"
+        }
+      }
+    ]
   }
 }
+

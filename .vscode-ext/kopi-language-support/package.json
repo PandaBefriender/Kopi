@@ -1,0 +1,34 @@
+{
+  "name": "kopi-language-support",
+  "displayName": "Kopi Language Support",
+  "description": "Syntax highlighting and language support for Kopi programming language",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.0.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "kopi",
+        "aliases": [
+          "Kopi",
+          "kopi"
+        ],
+        "extensions": [
+          ".kopi"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kopi",
+        "scopeName": "source.kopi",
+        "path": "./kopi.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -3,7 +3,7 @@
   "publisher": "kopi-org",
   "displayName": "Kopi Language Support",
   "description": "Syntax highlighting and language support for Kopi programming language",
-  "version": "1.1.0",
+  "version": "1.4.1",
   "icon": "./icons/kopi.png",
   "engines": {
     "vscode": "^1.80.0"

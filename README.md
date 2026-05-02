@@ -37,6 +37,16 @@ Then you can run:
 kopi run path/to/file.kopi
 ```
 
+## OR
+
+Kopi is also automatically availible so you dont have to install this. It comes with the repo.
+
+You can just start using
+
+```bash
+kopi run path/to/file.kopi
+```
+
 ## What you can write in Kopi
 
 ### Values
